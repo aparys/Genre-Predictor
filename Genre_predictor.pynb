@@ -1,0 +1,277 @@
+#Version 0 of extraction algorythm - extracts words, movie counts, and frequencies into separate movie csv files
+#NOT Bag-of-Words implementation, simple words and other lables extraction
+#resulted in amounts of data hard to process or reprocess
+#Author: Amiran Ropyakn & Asya Soughou
+#Group: Kevin Hui, Adam P. 
+import re
+import sys
+import string
+import csv
+import os
+from collections import Counter
+from datetime import datetime
+import time
+from bs4 import UnicodeDammit
+
+#AS datapoint class
+class DataPoint:
+    def __init__(self, time, word, count):
+        self.time = time
+        self.word = word
+        self.count = count
+    def __init__(self, time):
+        self.time = time
+        self.word = ""
+        self.count = 0
+    def add_word(self, word):
+        self.word = word
+    def count(self, count):
+        self.count = count
+    def show_all(self):
+        print(self.word, self.time, self.count)
+    def getWord(self):
+        return self.word
+    def getTime(self):
+        return self.time
+    def getCount(self):
+        return self.count
+
+#########################################################################################################################################
+# This function will take a SRT file full of subtitles and
+# will break them down in individual words and then count them
+def splitWord(filename):
+    # a dictionary for punctuation that we will remove
+    # {",", ";", ":", ".", "?", "!", "-", "–", "—", "{", "}", "(", ")", "'", '"', "*" }
+
+    # read file line by line
+    file = open(("/content/drive/MyDrive/RevisedSRT/"+filename),mode='r', errors='ignore')  #(("/content/drive/MyDrive/RevisedSRT/"+filename), "r")
+    #lines = file.readlines()
+    #lines = list(line for line in (l.strip() for l in file) if line) # AS: Non-blank lines only
+    lines = [line for line in file.readlines() if line.strip()]
+    
+    file.close()
+
+    # initialize a variable for the stringtext
+    text = ''
+    seconds = [0 for i in range(2)]
+
+    word_points = [] 
+
+    for line in lines:
+        #--------------------------------timestamp extract-----------------------------------------------------
+        #AS: extract timestamps
+        # format of time line: 00:00:47,500 --> 00:00:55,500
+
+        if re.search('[0-9]{2}:[0-9]{2}:[0-9]{2}', line): #if line contains timestamp
+            timestamp = ["" for i in range(2)]
+            for i in range(2):
+                timestamp = re.findall('[0-9]{2}:[0-9]{2}:[0-9]{2}', line) #will have 2 timestamps (start and end time of subtitle line)
+
+            #for every timestamp (2 per line) convert to seconds 
+            for i in range(2): 
+              if ( i >= 0 and i < len(timestamp)):
+                d = datetime.strptime(timestamp[i], "%H:%M:%S")
+                d = d.timetuple()
+                #print(d)   #print time.struct_time(tm_year=1900, tm_mon=1, tm_mday=1, tm_hour=0, tm_min=11, tm_sec=12, tm_wday=0, tm_yday=1, tm_isdst=-1)
+                seconds[i] = (d.tm_hour * 3600) + (d.tm_min * 60) + d.tm_sec
+              
+        #--------------------------------timestamp extract END-----------------------------------------------------
+
+        # remove timestamps from the string
+        if re.search('^[0-9<>]+$', line) is None and re.search('^[0-9]{2}:[0-9]{2}:[0-9]{2}', line) is None and re.search('^$', line) is None and re.search('^[0-9]$', line) is None:
+           # attach the rest of the line to the rest of the string separated with a space
+            text += ' ' + line.rstrip('\n')            
+            text = text.lstrip() # organize the spaces by removing any extras (remove left spaces)
+
+        # Remove specific parts of the text that we do not count as words like:
+        # removes the<i>, </i>, <font color="#00ffff"> - might need to implement a way to case for all hexas
+        #AS: for now added removing <font color=" as the color value is easy to recognize and delete later by '#' sign
+        # removes the </font>
+        removeAttirubutes = text.replace('^COLOR=#[0-9a-f]{6}',"").replace('<font color="#[0-9a-f]{6}">',"").replace('<i>',"").replace('</i>',"").replace('>',"").replace('</font>',"").replace('♫',"").replace('<font color="#[0-9a-f]{6}"><i>',"") #.replace('#[0-9a-f]{6}|#[0-9a-f]{3}', "")    
+
+        # a command that will replace all punctuation
+        removePunc = removeAttirubutes.replace(",", "").replace(";", "").replace(":", "").replace(".", "").replace("?", "").replace("!", "").replace("-", "").replace("–", "").replace("—", "").replace("{", "").replace("}", "").replace("(", "").replace(")", "").replace("'", "").replace('"', "").replace("*", "").replace("…", "").replace("<", "").replace(">", "").replace("/", "").replace("\\", "").replace("♪", "")
+        #print(secondsstring)
+        removePunc = removePunc.upper()
+        words = removePunc.split()
+
+        #add words from the text line and previously set timestamp in vector of DataPoints (word, time, count)
+        for w in words:
+            point = DataPoint(seconds[0])
+            point.add_word(w)
+            word_points.append(point)
+                
+        words = ""
+        text = ""
+    # ---------END FOR LINE IN TEXT
+
+    # make all the words uppercase so they are insensitive to case
+    #removePunc = removePunc.upper()
+ 
+    return(word_points)
+
+#########################################################################################################################################
+def wordCount(wordlist):
+    counts = Counter(wordlist) # count how many of each word is in the array of "words"
+    return(counts) # print the word and it appearance count
+
+#########################################################################################################################################
+#AS format topper according to # genres
+def csvTopper (fp,genre):
+    if len(genre) == 1:
+        fp.write('{},{},{},{},{},{},{},{}\n'.format('timestamp', 'moviepart', 'word', 'count', 'wordfrequency', 'genre', 'year', 'moviename'))
+    if len(genre) == 2:
+        fp.write('{},{},{},{},{},{},{},{},{}\n'.format('timestamp','moviepart', 'word', 'count', 'wordfrequency', 'genre','genre', 'year', 'moviename'))
+    if len(genre) == 3:
+        fp.write('{},{},{},{},{},{},{},{},{},{}\n'.format('timestamp','moviepart', 'word', 'count', 'wordfrequency', 'genre','genre', 'genre', 'year', 'moviename'))
+    if len(genre) == 4:
+        fp.write('{},{},{},{},{},{},{},{},{},{},{}\n'.format('timestamp','moviepart', 'word', 'count', 'wordfrequency', 'genre','genre', 'genre', 'genre', 'year', 'moviename'))
+    if len(genre) == 5:
+        fp.write('{},{},{},{},{},{},{},{},{},{},{},{}\n'.format('timestamp','moviepart', 'word', 'count', 'wordfrequency', 'genre','genre', 'genre', 'genre','genre', 'year', 'moviename'))         
+#########################################################################################################################################
+#AS write processed data to csv 
+def dataToCsv(fp, wordlist, countlist, year, genre, moviename, timelist, moviepart, wordfrequency):
+    i = 0
+    for word in wordlist:  
+        if word != "":
+            fp.write('{},{},{},{},{},{},{},{}\n'.format(timelist[i],moviepart[i], word, countlist[i], wordfrequency[i], str(genre).translate({ord('['): '', ord(']'): '', ord('\''): ''}).lower(), year, moviename)) #AS: added filename to the csv file 
+            i += 1
+#########################################################################################################################################
+#AS based on the last timestamp, estimate movie length
+#last timestamp is the beginning time of the last phrase/song in the movie
+#returns length in seconds
+def movieLength (timelist):
+    length=0
+    if len(timelist) >0:
+        length = timelist[len(timelist)-1]
+    #print(length)
+    return length
+#########################################################################################################################################
+#AS splits movie into 3 parts (beginning-middle-end)
+#creates a list where beginning = 1, middle = 2, end = 3
+def moviePart (timelist):
+    moviepart = [] #list of movie parts corresponding to time list
+    movielength = movieLength(timelist)
+    #print(movielength)
+    moviethird = movielength / 3
+    #print(moviethird)
+    
+    for t in timelist:
+        if t <= moviethird:
+            moviepart.append(1)
+        elif t <= (2* moviethird):
+            moviepart.append(2)
+        else:
+            moviepart.append(3)
+    return moviepart
+#########################################################################################################################################
+#AS calculates word frequency & returns a list of frequencies
+def wordFrequency (countlist, numberWords):
+    wordfrequency = []
+    for c in countlist:
+        wordfrequency.append(c / numberWords)
+    return wordfrequency
+#########################################################################################################################################
+# This function will take the count of each word and create a csv file
+# that will contain the word, count, and filename.
+
+def countExport(wordlist, countlist, year, genre, moviename, filename, timelist):
+    #outfile = input("Enter a name for your output: ")  
+    with open(filename, mode='w', encoding='utf8', errors='ignore') as fp:
+        #encoding = UnicodeDammit(wordlist)
+        #print(encoding.original_encoding, '----------------------------')
+        moviepartlist = moviePart(timelist)
+        wordfrequencylist = wordFrequency(countlist, len(wordlist))
+        #csvTopper(fp, genre) #topper formatted according to # genres
+
+        if len(genre) == 1:
+          fp.write('{},{},{},{},{},{},{},{}\n'.format('timestamp', 'moviepart', 'word', 'count', 'wordfrequency', 'genre', 'year', 'moviename'))
+        if len(genre) == 2:
+          fp.write('{},{},{},{},{},{},{},{},{}\n'.format('timestamp','moviepart', 'word', 'count', 'wordfrequency', 'genre','genre', 'year', 'moviename'))
+        if len(genre) == 3:
+          fp.write('{},{},{},{},{},{},{},{},{},{}\n'.format('timestamp','moviepart', 'word', 'count', 'wordfrequency', 'genre','genre', 'genre', 'year', 'moviename'))
+        if len(genre) == 4:
+          fp.write('{},{},{},{},{},{},{},{},{},{},{}\n'.format('timestamp','moviepart', 'word', 'count', 'wordfrequency', 'genre','genre', 'genre', 'genre', 'year', 'moviename'))
+        if len(genre) == 5:
+          fp.write('{},{},{},{},{},{},{},{},{},{},{},{}\n'.format('timestamp','moviepart', 'word', 'count', 'wordfrequency', 'genre','genre', 'genre', 'genre','genre', 'year', 'moviename'))         
+
+
+        #fp.write('\n')
+        #dataToCsv(fp, wordlist, countlist, year, genre, moviename, timelist, moviepartlist, wordfrequencylist)
+        i = 0
+        for word in wordlist:  
+          if word != "":
+            fp.write('{},{},{},{},{},{},{},{}\n'.format(timelist[i],moviepartlist[i], word, countlist[i], wordfrequencylist[i], str(genre).translate({ord('['): '', ord(']'): '', ord('\''): ''}).lower(), year, moviename)) #AS: added filename to the csv file 
+            i += 1
+    print("All words accounted for!")
+    wordlist.clear()
+    timelist.clear()
+    countlist.clear()
+
+#########################################################################################################################################
+
+
+def Main():
+    # The name of the file we are using, (include .srt)
+    #filename = input("Enter your filename: ")
+    #wordlist = splitWord(filename)
+    path = "/content/drive/MyDrive/RevisedSRT/" 
+    #AS: read all files in directory with .srt ending
+    #source https://www.geeksforgeeks.org/python-loop-through-files-of-certain-extensions/
+    #source: https://stackoverflow.com/questions/11968976/list-files-only-in-the-current-directory
+    ext = ('.srt')
+    wordlist = [] #create a list of words to count
+    timelist = [] #create a list of timestamps
+    counterlist = []#create a list of counters
+    frequencylist = [] # create a list of word frequencies
+
+    filesProcessed = 0
+    for files in os.listdir(path): #('.'): if a file in current directory
+        if (filesProcessed < 22059): #5674 issue, 97 or 96, 8978, 19379,22058
+            filesProcessed += 1
+         
+        elif (files.endswith(ext)): #ends with defined extension
+            wordTimeVector = splitWord(files) #split srv file into vector of words with timestamps
+          #split word vector into time & word lists
+            i = 0
+            for i in range(len(wordTimeVector)):
+                vectorWord = wordTimeVector[i].getWord()
+                if (vectorWord != "") and ( vectorWord.isnumeric() == 0 ):
+                    timelist.append(wordTimeVector[i].getTime())
+                    wordlist.append(vectorWord)
+                i+=1
+            #count words in wordlist
+            for w in wordlist: 
+                if (w != ""):
+                  count = wordlist.count(w)
+                  counterlist.append(count)
+                if w == "":
+                    break
+
+            moviename = files[:len(files) - 4] #AS: remove last 4 char <.srt> form string 
+            filename = moviename
+            year = moviename[0:4] # movie titles in format YYYY.genre.genre.genre.movie-title.srt
+            moviename = moviename[5:] #remove YYYY. from movie name 
+            genre = moviename.split(".")# split genre.genre.movie-title at the .
+            moviename = genre[len(genre) - 1] #extract last part (movie-title) as a movie name 
+            genre.pop() #remove moviename from genre list        
+            moviename.replace('-'," ")
+            filename += '.csv'
+            filename = path +'processed/' + filename
+        
+            countExport(wordlist, counterlist, year, genre, moviename, filename, timelist)
+            filesProcessed += 1
+            print('files processed: ', filesProcessed)
+
+        else:
+            print('{files} skipped')
+            filesProcessed += 1
+        
+        
+        #print('files processed: ', filesProcessed)
+
+    #     If user did not want counted list, create a CSV with all the words separate
+    #csvCheck = input("Would you like to create a CSV with data list? \n Please input Yes or No: ")
+    #if csvCheck == "Yes" or csvCheck == "yes" or csvCheck == "Y" or csvCheck == "y":
+           #listExport(wordlist, filename)
+Main()
